@@ -85,6 +85,9 @@ function FeedContent({
   const [showFairness, setShowFairness] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
+  // Set while the ORIGIN list was opened at a post found by search (it then
+  // starts at that post, not at post #1). Cleared by any other navigation.
+  const [jumpPostId, setJumpPostId] = useState<number | undefined>(undefined);
   const [userAddress, setUserAddress] = useState("");
   const [userBalance, setUserBalance] = useState<number | undefined>(undefined);
   // Network fee the boot tx needs on top of bootPrice (from the tx builder on an
@@ -352,6 +355,29 @@ function FeedContent({
     return () => io.disconnect();
   }, [scrollRef, mode, liveHasMore]);
 
+  // Search result → open the feed AT that post: the ORIGIN machinery (a static
+  // list read forward, polling paused) started from the post instead of post #1.
+  const handleOpenPost = useCallback(
+    async (post: Post) => {
+      if (fading) return;
+      setFading(true);
+      const started = Date.now();
+      const page = await getForwardPosts(post.id - 1).catch(() => [] as Post[]);
+      const wait = 220 - (Date.now() - started);
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      const list = page.length > 0 ? page : [post];
+      setOriginPosts(list);
+      setOriginHasMore(page.length === 100);
+      originHasMoreRef.current = page.length === 100;
+      lastOriginIdRef.current = list.at(-1)?.id;
+      setJumpPostId(post.id);
+      setMode("origin");
+      scrollRef.current?.scrollTo({ top: 0 });
+      requestAnimationFrame(() => setFading(false));
+    },
+    [fading, scrollRef]
+  );
+
   // "Genesis" → ORIGIN: cross-fade out, load the oldest window, land at the top,
   // fade in. A ~220ms floor keeps a fast fetch from flickering.
   const handleGoOrigin = useCallback(async () => {
@@ -365,9 +391,11 @@ function FeedContent({
     setOriginHasMore(oldest.length === 100);
     originHasMoreRef.current = oldest.length === 100;
     lastOriginIdRef.current = oldest.at(-1)?.id;
+    setJumpPostId(undefined);
     setMode("origin");
+    scrollRef.current?.scrollTo({ top: 0 });
     requestAnimationFrame(() => setFading(false));
-  }, [fading]);
+  }, [fading, scrollRef]);
 
   // "↓ Latest" → LIVE: cross-fade back to a CLEAN newest window (scroll-up state
   // does not persist across a Genesis round-trip).
@@ -382,6 +410,7 @@ function FeedContent({
     olderPostsRef.current = [];
     prependPrevHeightRef.current = null;
     landedRef.current = false; // re-gate loadOlder until the landing effect re-runs
+    setJumpPostId(undefined);
     setMode("live");
     requestAnimationFrame(() => setFading(false));
   }, [fading]);
@@ -487,7 +516,8 @@ function FeedContent({
         mode={mode}
         unreadCount={mode === "live" ? unreadCount : 0}
         onGoLive={handleDownButton}
-        onGoOrigin={mode === "origin" ? scrollToTop : handleGoOrigin}
+        onGoOrigin={mode === "origin" && jumpPostId == null ? scrollToTop : handleGoOrigin}
+        onOpenPost={handleOpenPost}
       />
 
       {/* Pinned bootboard — one line; opens the full board on tap */}
@@ -540,6 +570,7 @@ function FeedContent({
             onFreeBootUsed={handleFreeBootUsed}
             bootPrice={bootPrice}
             freeBootsRemaining={freeBootsRemaining}
+            jumpPostId={jumpPostId}
           />
 
           {/* Optimistic posts — appear at the bottom (newest), full opacity since server confirms in ~50ms */}

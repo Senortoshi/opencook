@@ -204,6 +204,12 @@ interface PostListProps {
   onFreeBootUsed?: () => void;
   bootPrice: number;
   freeBootsRemaining: number;
+  /**
+   * ORIGIN list opened at a post found by search: that post is first, marked,
+   * and the list is NOT the start of the feed — so no founding block above it
+   * and no "Genesis" badge on its first row.
+   */
+  jumpPostId?: number;
 }
 
 export function PostList({
@@ -226,6 +232,7 @@ export function PostList({
   onFreeBootUsed,
   bootPrice,
   freeBootsRemaining,
+  jumpPostId,
 }: PostListProps) {
   // Re-render every 60s to keep timeAgo labels fresh
   const [, setTick] = useState(0);
@@ -241,11 +248,16 @@ export function PostList({
           with the upward-load sentinel, so a prepend can never yank it. The real
           founding conversation now lives in the feed itself (seeded posts), so the
           old hardcoded genesis sample was removed. */}
-      {(mode === "origin" || (mode === "live" && !liveHasMore)) && (
+      {jumpPostId == null && (mode === "origin" || (mode === "live" && !liveHasMore)) && (
         <>
           <div ref={genesisRef} />
           <Manifesto onAskAgent={onAskAgent} />
         </>
+      )}
+      {jumpPostId != null && (
+        <p className="pb-1 pt-4 text-center text-[12.5px] text-zinc-500">
+          From your search. Later posts follow below.
+        </p>
       )}
 
       {/* LIVE upward-load sentinel — only while older history remains. */}
@@ -287,7 +299,7 @@ export function PostList({
                   observerRef.current.observe(el);
                 }
               }}
-              className="py-3 group"
+              className={`py-3 group ${post.id === jumpPostId ? "-mx-4 px-4 bg-amber-500/[0.13]" : ""}`}
             >
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
@@ -296,14 +308,16 @@ export function PostList({
                     {/* The very first post = topmost row when nothing older remains
                         (ORIGIN always; LIVE once post #1 is reached). No server round-
                         trip — derived from props PostList already has. */}
-                    {i === 0 && (mode === "origin" || (mode === "live" && !liveHasMore)) && (
-                      <span
-                        className="text-[9px] font-semibold uppercase tracking-wider text-amber-400/80 border border-amber-500/30 rounded px-1 py-px shrink-0"
-                        title="The first post — where OpenCook began"
-                      >
-                        Genesis
-                      </span>
-                    )}
+                    {i === 0 &&
+                      jumpPostId == null &&
+                      (mode === "origin" || (mode === "live" && !liveHasMore)) && (
+                        <span
+                          className="text-[9px] font-semibold uppercase tracking-wider text-amber-400/80 border border-amber-500/30 rounded px-1 py-px shrink-0"
+                          title="The first post — where OpenCook began"
+                        >
+                          Genesis
+                        </span>
+                      )}
                     {post.signature && (
                       <span
                         className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block shrink-0"

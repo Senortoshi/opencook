@@ -10,6 +10,7 @@ import {
   MAX_POST_LENGTH,
   normalizePostContent,
 } from "@/lib/post-content";
+import { likePattern, normalizeSearchQuery, SEARCH_LIMIT } from "@/lib/post-search";
 import { rateLimit } from "@/lib/rate-limit";
 import {
   FREE_BOOT_COST_SATS,
@@ -248,6 +249,41 @@ export async function getForwardPosts(afterId: number): Promise<Post[]> {
     LIMIT 100
   `)
     .all(afterId) as Post[];
+}
+
+/**
+ * Search posts by text: a case-insensitive "contains", newest first.
+ *
+ * Read-only and public (every post is already public). Rate-limited per IP
+ * because, unlike the feed poll, each call scans the posts table. `limited`
+ * tells the menu to say "slow down" instead of showing "no results".
+ */
+export async function searchPosts(
+  rawQuery: string
+): Promise<{ posts: Post[]; more: boolean; limited?: boolean }> {
+  const query = normalizeSearchQuery(rawQuery);
+  if (!query) return { posts: [], more: false };
+
+  const hdrs = await headers();
+  const ip =
+    hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    hdrs.get("x-real-ip")?.trim() ||
+    "unknown";
+  const rl = rateLimit(`searchPosts:${ip}`, { limit: 60, windowMs: 60_000 });
+  if (!rl.success) return { posts: [], more: false, limited: true };
+
+  const rows = db
+    .prepare(`
+    SELECT p.*, COALESCE(bc.boot_count, 0) as boot_count
+    FROM posts p
+    LEFT JOIN (SELECT post_id, COUNT(*) as boot_count FROM bootboard GROUP BY post_id) bc
+      ON bc.post_id = p.id
+    WHERE p.content LIKE ? ESCAPE '\\'
+    ORDER BY p.id DESC
+    LIMIT ?
+  `)
+    .all(likePattern(query), SEARCH_LIMIT + 1) as Post[];
+  return { posts: rows.slice(0, SEARCH_LIMIT), more: rows.length > SEARCH_LIMIT };
 }
 
 /**

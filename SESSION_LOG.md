@@ -2,6 +2,14 @@
 
 > Short summaries of each working session. AI agents: add an entry before ending any significant session.
 
+## 2026-11-21 — Search: find any post from the side menu and open the feed at it
+
+- **Category:** feature (read-only). Its own small branch, `pr/search`, stacked on `pr/phone-shell` (the two phone-shell commits). Not pushed.
+- **Files:** new `src/lib/post-search.ts` (+test: query tidy-up, LIKE escaping, result snippet); `src/app/actions.ts` — `searchPosts(query)`: case-insensitive "contains" over post text, newest first, 40 results, `%`/`_` matched literally, 60 searches a minute per IP (says `limited` rather than "no results"); `src/app/SideMenu.tsx` — a search box at the top of the menu, results with the matching words highlighted; `src/app/Feed.tsx` + `src/app/PostList.tsx` — tapping a result opens the feed AT that post through the ORIGIN machinery (static list read forward, polling paused), with the post marked, no founding block above it and no Genesis badge; new `src/app/search.integration.test.ts` (6).
+- **Not touched:** posting, boosts, identity, anything that moves money. Search never asks for sign-in.
+- **Verified:** `tsc --noEmit` clean; Biome clean on the changed files; unit and integration suites pass on this branch.
+- **Left out on purpose (keeps the PR small):** search inside the header with "1 of 24" arrows (the mock has it), searching by author, and an index — a table scan is instant at today's size.
+
 ## 2026-11-21 — Phone shell, slice 2: post rows + boot button
 
 - **Category:** UI (layout only), continuing step 2 of the Cooks plan on `feature/spawn-projects`. Owner sign-off on the look still pending; not pushed.
