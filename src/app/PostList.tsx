@@ -227,9 +227,6 @@ export function PostList({
   bootPrice,
   freeBootsRemaining,
 }: PostListProps) {
-  // Only used to mark the viewer's OWN posts on their own screen ("you" + tint).
-  const { identity } = useIdentityContext();
-
   // Re-render every 60s to keep timeAgo labels fresh
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -290,19 +287,12 @@ export function PostList({
                   observerRef.current.observe(el);
                 }
               }}
-              className={`py-3 group ${
-                identity && post.pubkey === identity.pubkey ? "-mx-4 px-4 bg-amber-500/[0.06]" : ""
-              }`}
+              className="py-3 group"
             >
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex min-h-5 items-center gap-2 text-[13px] text-zinc-500">
                     <span className="font-medium text-zinc-400">{post.author_name}</span>
-                    {identity && post.pubkey === identity.pubkey && (
-                      <span className="shrink-0 rounded-md bg-zinc-900 px-1.5 py-px text-[11px] font-medium text-amber-400">
-                        you
-                      </span>
-                    )}
                     {/* The very first post = topmost row when nothing older remains
                         (ORIGIN always; LIVE once post #1 is reached). No server round-
                         trip — derived from props PostList already has. */}

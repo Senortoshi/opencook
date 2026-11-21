@@ -546,17 +546,11 @@ function FeedContent({
           {mode === "live" && pendingOptimistic.length > 0 && (
             <div className="mx-auto max-w-2xl px-4 pb-2 divide-y divide-zinc-800/60">
               {pendingOptimistic.map((op) => (
-                <article
-                  key={op.id}
-                  className={`-mx-4 px-4 py-3 bg-amber-500/[0.06] ${op.failed ? "opacity-50" : ""}`}
-                >
+                <article key={op.id} className={`py-3 ${op.failed ? "opacity-50" : ""}`}>
                   <div className="flex items-start gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex min-h-5 items-center gap-2 text-[13px] text-zinc-500">
                         <span className="font-medium text-zinc-400">{op.author_name}</span>
-                        <span className="shrink-0 rounded-md bg-zinc-900 px-1.5 py-px text-[11px] font-medium text-amber-400">
-                          you
-                        </span>
                         <span>·</span>
                         <time>{timeAgo(op.created_at)}</time>
                         {op.failed && (
