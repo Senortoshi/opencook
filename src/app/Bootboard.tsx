@@ -146,110 +146,102 @@ export function Bootboard({
     prevIdRef.current = currentId;
   }, [current?.id]);
 
+  const panelId = "bootboard-panel";
+
+  // One pinned line (phone shell): boot icon · who · the post, truncated · how
+  // long it has held the spot. Tapping the line opens the full board beneath it
+  // (the whole post, who booted it, and the history with reboot). The line keeps
+  // the header + keyboard from squeezing the feed on a phone.
   return (
     <div
-      className={`relative rounded-xl border bg-gradient-to-b from-amber-500/8 to-amber-500/3 px-3.5 py-3.5 transition-all duration-300 ${
-        glowing ? "border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.3)]" : "border-amber-500/30"
+      className={`relative border-b transition-all duration-300 ${
+        glowing
+          ? "border-amber-400 bg-amber-500/10 shadow-[0_0_20px_rgba(245,158,11,0.3)]"
+          : "border-zinc-800 bg-transparent"
       } ${shaking ? "animate-[shake_0.5s_ease-in-out]" : ""}`}
     >
       {current ? (
         <div className={slideIn ? "animate-[slideUp_0.4s_ease-out_backwards]" : ""}>
-          {/* Meta line — label + author + timer */}
-          <div className="flex flex-wrap items-center justify-between text-xs text-zinc-500 mb-1.5 gap-y-1">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <BootIcon size={14} className="text-amber-400 shrink-0" />
-              <span className="text-amber-400 font-semibold text-[11px] uppercase tracking-wide shrink-0">
-                Bootboard
-              </span>
-              <span className="text-zinc-700 shrink-0">·</span>
-              <span className="font-medium text-amber-300 truncate">{current.author_name}</span>
-              {current.signature && (
-                <span
-                  className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block shrink-0"
-                  title="Signed"
-                />
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
-              <LiveTimer since={current.booted_at} />
-            </div>
-          </div>
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            aria-expanded={expanded}
+            aria-controls={panelId}
+            aria-label={expanded ? "Close the Bootboard" : "Open the Bootboard"}
+            className="flex h-9 w-full items-center gap-2 text-left text-sm active:opacity-60"
+          >
+            <BootIcon size={14} className="text-amber-400 shrink-0" />
+            <span className="shrink-0 font-medium text-zinc-500">{current.author_name}</span>
+            {current.signature && (
+              <span
+                className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block shrink-0"
+                title="Signed"
+              />
+            )}
+            <span className="min-w-0 flex-1 truncate text-zinc-300">
+              {expanded ? "" : current.content}
+            </span>
+            <LiveTimer since={current.booted_at} />
+            <svg
+              width="14"
+              height="8"
+              viewBox="0 0 14 8"
+              fill="none"
+              aria-hidden="true"
+              className={`shrink-0 text-zinc-500 transition-transform ${expanded ? "rotate-180" : ""}`}
+            >
+              <path
+                d="M2 2l5 4 5-4"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
 
-          {/* Content */}
-          <p className="text-sm leading-snug text-zinc-100 whitespace-pre-wrap break-words">
-            {current.content}
-          </p>
-
-          {/* Expanded: scrollable history with reboot */}
+          {/* Open: the whole post, who booted it, scrollable history with reboot */}
           {expanded && (
-            <div className="animate-[slideUp_0.2s_ease-out_backwards] mt-2 pt-2 border-t border-zinc-800/40">
-              <div className="flex items-center gap-2 text-[11px] text-zinc-600 mb-1.5">
-                <span>booted by {current.boosted_by_name ?? current.boosted_by}</span>
-              </div>
-              {history.length > 0 && (
-                <div
-                  className="max-h-[120px] overflow-y-auto scrollbar-hide space-y-1"
-                  style={{ scrollbarWidth: "none" }}
-                >
-                  {history.map((h) => (
-                    <HistoryRow
-                      key={`${h.post_id}-${h.booted_at}`}
-                      entry={h}
-                      onBooted={onBooted}
-                      onFundNeeded={onFundNeeded}
-                    />
-                  ))}
+            <div
+              id={panelId}
+              className="animate-[slideUp_0.2s_ease-out_backwards] max-h-[45dvh] overflow-y-auto scrollbar-hide pb-3"
+              style={{ scrollbarWidth: "none" }}
+            >
+              <p className="text-[15px] leading-snug text-zinc-100 whitespace-pre-wrap break-words">
+                {current.content}
+              </p>
+              <div className="mt-2 pt-2 border-t border-zinc-800/60">
+                <div className="flex items-center gap-2 text-[11px] text-zinc-600 mb-1.5">
+                  <span>booted by {current.boosted_by_name ?? current.boosted_by}</span>
                 </div>
-              )}
+                {history.length > 0 && (
+                  <div className="space-y-1 pl-2">
+                    {history.map((h) => (
+                      <HistoryRow
+                        key={`${h.post_id}-${h.booted_at}`}
+                        entry={h}
+                        onBooted={onBooted}
+                        onFundNeeded={onFundNeeded}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
       ) : (
-        <div className="flex items-center gap-2 text-xs">
-          <BootIcon size={14} className="text-amber-400" />
-          <span className="text-amber-400 font-semibold text-[11px] uppercase tracking-wide">
-            Bootboard
+        <div className="flex h-9 items-center gap-2 text-sm">
+          <BootIcon size={14} className="text-amber-400 shrink-0" />
+          <span className="min-w-0 flex-1 truncate text-zinc-500">
+            Boost any post to claim the spotlight
           </span>
-          <span className="text-zinc-700">·</span>
-          <span className="text-zinc-600">Boost any post to claim the spotlight</span>
           {bootPrice !== undefined && bootPrice > 0 && (
-            <>
-              <span className="text-zinc-700">·</span>
-              <span className="text-zinc-600">{bootPrice.toLocaleString()} sats</span>
-            </>
+            <span className="shrink-0 text-xs tabular-nums text-zinc-600">
+              {bootPrice.toLocaleString()} sats
+            </span>
           )}
         </div>
-      )}
-
-      {/* Expand/collapse — small chevron at the absolute bottom-center of
-          the card, sitting inside the existing 14px bottom padding zone.
-          Zero feed-room loss, zero card enlargement. Rotates 180° when
-          expanded to indicate "tap to collapse". */}
-      {current && (
-        <button
-          type="button"
-          onClick={() => setExpanded(!expanded)}
-          aria-label={expanded ? "Collapse history" : "Expand history"}
-          className="absolute bottom-0 left-1/2 -translate-x-1/2 px-3 py-1 text-zinc-500 hover:text-amber-300 transition-colors"
-        >
-          <svg
-            width="14"
-            height="8"
-            viewBox="0 0 14 8"
-            fill="none"
-            aria-hidden="true"
-            className={`transition-transform ${expanded ? "rotate-180" : ""}`}
-          >
-            <path
-              d="M2 2l5 4 5-4"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
       )}
     </div>
   );

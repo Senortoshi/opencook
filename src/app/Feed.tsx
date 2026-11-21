@@ -22,6 +22,7 @@ import { FundAddress } from "./FundAddress";
 import { Header } from "./Header";
 import { PostForm } from "./PostForm";
 import { PostList } from "./PostList";
+import { SideMenu } from "./SideMenu";
 
 // Landing scroll must run before paint (else a flash at the wrong position).
 // useLayoutEffect warns on the server; fall back to useEffect there.
@@ -82,6 +83,8 @@ function FeedContent({
   const [freeBootsRemaining, setFreeBootsRemaining] = useState(0);
   const [showFundModal, setShowFundModal] = useState(false);
   const [showFairness, setShowFairness] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
   const [userAddress, setUserAddress] = useState("");
   const [userBalance, setUserBalance] = useState<number | undefined>(undefined);
   // Network fee the boot tx needs on top of bootPrice (from the tx builder on an
@@ -460,6 +463,10 @@ function FeedContent({
 
   // The ↓ pill returns to LIVE in origin mode, else jumps to the newest.
   const handleDownButton = mode === "origin" ? handleGoLive : scrollToBottom;
+  // Already reading from the beginning: the menu row just returns to the top.
+  const scrollToTop = useCallback(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [scrollRef]);
 
   return (
     <div className="flex flex-col h-[100dvh]">
@@ -469,11 +476,23 @@ function FeedContent({
         genesisVisited={genesisVisited}
         onScrollToGenesis={handleGoOrigin}
         onOpenFairness={() => setShowFairness(true)}
+        unreadCount={mode === "live" ? unreadCount : 0}
+        menuOpen={menuOpen}
+        onOpenMenu={() => setMenuOpen(true)}
       />
 
-      {/* Pinned bootboard */}
-      <div className="shrink-0 relative">
-        <div className="mx-auto max-w-2xl px-4 pt-2 pb-3">
+      <SideMenu
+        open={menuOpen}
+        onClose={closeMenu}
+        mode={mode}
+        unreadCount={mode === "live" ? unreadCount : 0}
+        onGoLive={handleDownButton}
+        onGoOrigin={mode === "origin" ? scrollToTop : handleGoOrigin}
+      />
+
+      {/* Pinned bootboard — one line; opens the full board on tap */}
+      <div className="shrink-0">
+        <div className="mx-auto max-w-2xl px-4">
           <Bootboard
             data={bootboard}
             onBooted={refresh}
@@ -486,7 +505,6 @@ function FeedContent({
             }}
           />
         </div>
-        <div className="absolute bottom-0 left-0 right-0 h-3 bg-gradient-to-b from-transparent to-black pointer-events-none" />
       </div>
 
       {/* Scrollable posts area */}

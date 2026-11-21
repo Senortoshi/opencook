@@ -2,6 +2,16 @@
 
 > Short summaries of each working session. AI agents: add an entry before ending any significant session.
 
+## 2026-11-21 — Phone shell, slice 1: side menu, 48px header, one-line Bootboard
+
+- **Category:** UI (layout only). First slice of step 2 of the Cooks plan ("the mock comes to life"). Built on `feature/spawn-projects`. **The owner has not approved the look; nothing is pushed or deployed.**
+- **Files:** new `src/app/SideMenu.tsx` (slide-in menu from the left: "Main feed" with the unread count, "The beginning" → ORIGIN; scrim/Escape/close button; `inert` while closed; navigation only, never asks for sign-in). `src/app/Header.tsx` (48px bar + safe-area inset; menu button carrying the unread total; the Genesis shortcut moved from absolute-centre into the row so it cannot collide with the title on narrow phones). `src/app/Bootboard.tsx` (one pinned 36px line — icon · author · truncated post · timer; tap opens the whole post, "booted by" and the history with reboot beneath it; shake/glow/slide-in kept). `src/app/Feed.tsx` (menu state + wiring; Bootboard wrapper padding and fade removed).
+- **Not touched:** `useBoot`, `actions.ts`, boot-confirm, identity, PostForm, PostList rows, the You modal. `HistoryRow.handleReboot` still starts with the `requireIdentity()` gate. No money path, on-chain format or settled decision changed.
+- **Verified:** Biome clean on the four files, `tsc --noEmit` clean, unit suite 228/228. Rendered at 390×844 in headless Chrome against a scratch copy of the seed DB (feed, open menu, open Bootboard, empty Bootboard). NOT checked on a real phone or with the keyboard up.
+- **Ruled out this session:** a test-coin network switch (started, then dropped at the contributor's direction — build stays on mainnet). Two leftover files from it, `src/lib/network.ts` + `src/lib/network.test.ts`, are untracked and unused, awaiting a yes to delete.
+- **Still to do in step 2:** posts as plain rows with the time beside each; one compose pill with Ask AI inside it; the You panel as a wallet sheet; welcome message as a new visitor's first unread item; real-device pass (iPhone + Android, keyboard up).
+- **Next:** posts-as-rows + compose pill, then show the owner on a phone before going further.
+
 ## 2026-10-08 — Fix: post-deploy "Something went wrong" (stale-tab skew) → self-healing error screen
 
 - **Context:** after the 2026-10-07 push/deploy, users (and the owner) with a tab open from BEFORE the deploy hit "Something went wrong" on their first post. Diagnosed (agent + live checks) as Next.js deploy **skew** — the old client bundle called a server-action ID the new Railway deploy no longer serves; the rejection bubbled to the bare error boundary. NOT a code bug (fresh loads fine; `/api/posts` served `content_id`-stamped posts, `/api/health` green) and there's **no service worker**, so it self-heals on refresh. The post path has no try/catch (the boost path does → toast, which is why it presented as a *post* failure).
