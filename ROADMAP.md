@@ -368,7 +368,7 @@ Direction for the account itself (design only). One wallet interface (BRC-100-sh
 
 ## Phase 7: The Recursive Model — PLANNED
 
-- [ ] Phone shell for cooks (branch `feature/spawn-projects`, owner sign-off pending) — slice 1 built 2026-11-21: side menu, 48px header, one-line Bootboard. Remaining: posts as plain rows, compose pill, wallet sheet, welcome message, real-device pass.
+- [ ] Phone shell for cooks (branch `feature/spawn-projects`, owner sign-off pending) — built 2026-11-21: side menu, 48px header, one-line Bootboard (slice 1); post rows + boot button (slice 2). Remaining: wallet sheet, welcome message, compose pill (needs an owner call — conflicts with the settled Ask AI pill decision), real-device pass.
 - [ ] Post-to-project spawning
 - [ ] Template system for new instances
 - [ ] Yours Wallet integration via @1sat/connect for power users

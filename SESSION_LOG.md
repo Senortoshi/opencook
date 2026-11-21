@@ -2,6 +2,15 @@
 
 > Short summaries of each working session. AI agents: add an entry before ending any significant session.
 
+## 2026-11-21 — Phone shell, slice 2: post rows + boot button
+
+- **Category:** UI (layout only), continuing step 2 of the Cooks plan on `feature/spawn-projects`. Owner sign-off on the look still pending; not pushed.
+- **Files:** `src/app/PostList.tsx` — post body 17px, 13px meta line, rows top-aligned; the boot button is a bare icon with the count beneath it in amber (grey until a post has boots; the bordered ring is gone; tap target stays 44px); the viewer's OWN posts get a "you" tag and a faint amber row tint (compared by `post.pubkey === identity.pubkey`, display only, on the viewer's own screen). `src/app/Feed.tsx` — optimistic posts use the same row style.
+- **Not touched:** `handleBoot` logic (still `requireIdentity()` first, same disabled/throttle rules), `useBoot`, PostForm, AgentChat.
+- **Deliberately NOT done — conflicts with a settled decision:** the plan's "one compose pill with a plus; Ask AI moves inside it". DECISIONS "GitHub link: pill tease + modal footer (settled 2026-05-04)" keeps the Ask AI pill visible with the octocat as the open-source tease, and the install bookmark sits in that same footer row. Moving Ask AI into a plus menu would remove that tease, so it needs the owner's call first (Hard Rule 1).
+- **Verified:** Biome + `tsc --noEmit` clean, unit suite passes, rendered at 390×844 in headless Chrome incl. a real post made through the UI on a scratch DB (own-row tint + "you" tag appear). Not checked on a real phone.
+- **Still to do in step 2:** the You panel as a wallet sheet; welcome message as a new visitor's first unread item; compose pill (blocked on the decision above); real-device pass.
+
 ## 2026-11-21 — Phone shell, slice 1: side menu, 48px header, one-line Bootboard
 
 - **Category:** UI (layout only). First slice of step 2 of the Cooks plan ("the mock comes to life"). Built on `feature/spawn-projects`. **The owner has not approved the look; nothing is pushed or deployed.**

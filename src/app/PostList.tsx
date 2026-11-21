@@ -122,18 +122,15 @@ function BootButton({
 
   return (
     <div className="flex flex-col items-center">
+      {/* Bare icon with the count beneath — no ring. -m-2 + min 44px keeps the
+          tap target finger-sized while the column stays narrow. */}
       <button
         type="button"
         onClick={handleBoot}
         disabled={anyBooting || throttled || !canBoot}
-        className={`relative -m-2 p-2 flex items-center gap-1 rounded-full transition-all border disabled:cursor-not-allowed ${
-          isDimmed
-            ? "opacity-50 text-zinc-600 border-zinc-800"
-            : isThisBooting
-              ? "text-amber-400 border-amber-500/40 bg-amber-500/5"
-              : displayCount > 0
-                ? "text-amber-500 border-amber-500/20 hover:border-amber-500/40 hover:bg-amber-500/10"
-                : "text-zinc-600 border-zinc-800 hover:border-zinc-700 hover:text-amber-400 hover:bg-zinc-800/50"
+        aria-label={displayCount > 0 ? `Boot this post, ${displayCount} so far` : "Boot this post"}
+        className={`group/boot relative -m-2 flex min-h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-full transition-all active:scale-90 disabled:cursor-not-allowed disabled:active:scale-100 ${
+          isDimmed ? "opacity-40" : ""
         } ${!canBoot && !anyBooting ? "disabled:opacity-30" : ""}`}
         title={title}
       >
@@ -141,24 +138,33 @@ function BootButton({
           <>
             <BootSpinner />
             {showExtended && (
-              <span className="text-[9px] text-amber-400 pr-0.5">
+              <span className="text-[9px] leading-none text-amber-400">
                 {STATUS_LABEL[bootStatus] ?? ""}
               </span>
             )}
           </>
         ) : (
-          <BootIcon size={13} className={displayCount > 0 ? "text-amber-500" : ""} />
+          <>
+            <BootIcon
+              size={17}
+              className={
+                displayCount > 0
+                  ? ""
+                  : "grayscale opacity-40 transition-opacity group-hover/boot:opacity-80"
+              }
+            />
+            {displayCount > 0 && (
+              <span className="text-[11.5px] font-semibold leading-none tabular-nums text-amber-400">
+                {displayCount}
+              </span>
+            )}
+          </>
         )}
       </button>
 
-      {/* Boot count — hide while actively booting this post */}
-      {!isThisBooting && displayCount > 0 && (
-        <span className="text-[9px] text-zinc-600 mt-0.5">{displayCount}</span>
-      )}
-
       {/* Free label */}
       {!isThisBooting && isFree && canBoot && (
-        <span className="text-[8px] text-emerald-600 mt-0.5">FREE</span>
+        <span className="text-[9px] leading-none text-emerald-600 mt-0.5">FREE</span>
       )}
 
       {/* First-time consolidation hint */}
@@ -221,6 +227,9 @@ export function PostList({
   bootPrice,
   freeBootsRemaining,
 }: PostListProps) {
+  // Only used to mark the viewer's OWN posts on their own screen ("you" + tint).
+  const { identity } = useIdentityContext();
+
   // Re-render every 60s to keep timeAgo labels fresh
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -281,12 +290,19 @@ export function PostList({
                   observerRef.current.observe(el);
                 }
               }}
-              className="py-3.5 group"
+              className={`py-3 group ${
+                identity && post.pubkey === identity.pubkey ? "-mx-4 px-4 bg-amber-500/[0.06]" : ""
+              }`}
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 text-xs text-zinc-500">
-                    <span className="font-medium text-zinc-300">{post.author_name}</span>
+                  <div className="flex min-h-5 items-center gap-2 text-[13px] text-zinc-500">
+                    <span className="font-medium text-zinc-400">{post.author_name}</span>
+                    {identity && post.pubkey === identity.pubkey && (
+                      <span className="shrink-0 rounded-md bg-zinc-900 px-1.5 py-px text-[11px] font-medium text-amber-400">
+                        you
+                      </span>
+                    )}
                     {/* The very first post = topmost row when nothing older remains
                         (ORIGIN always; LIVE once post #1 is reached). No server round-
                         trip — derived from props PostList already has. */}
@@ -333,11 +349,11 @@ export function PostList({
                       </a>
                     )}
                   </div>
-                  <p className="mt-1.5 text-[15px] leading-relaxed text-zinc-200 whitespace-pre-wrap break-words">
+                  <p className="mt-0.5 text-[17px] leading-[1.38] tracking-[-0.012em] text-zinc-100 whitespace-pre-wrap break-words">
                     {post.content}
                   </p>
                 </div>
-                <div className="shrink-0 self-center">
+                <div className="shrink-0 pt-1">
                   <BootButton
                     postId={post.id}
                     bootCount={post.boot_count}
