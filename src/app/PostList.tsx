@@ -5,8 +5,9 @@ import { BootIcon } from "@/components/icons/BootIcon";
 import { useBootContext } from "@/contexts/BootContext";
 import { useIdentityContext } from "@/contexts/IdentityContext";
 import { useBoot } from "@/hooks/useBoot";
+import { cookTagFor } from "@/lib/cooks";
 import { timeAgo } from "@/lib/utils";
-import type { Post } from "@/types";
+import type { Cook, Post } from "@/types";
 import { Manifesto } from "./Manifesto";
 
 // ── Inline amber spinner (16px, Tailwind animate-spin) ───────────────────────
@@ -204,12 +205,76 @@ interface PostListProps {
   onFreeBootUsed?: () => void;
   bootPrice: number;
   freeBootsRemaining: number;
+  /** Viewing one cook: its header replaces the founding block at the top. */
+  cook?: Cook | null;
+  /** Open another cook (the "fork of" link in a fork's header). */
+  onOpenCookId?: (cookId: string) => void;
   /**
    * ORIGIN list opened at a post found by search: that post is first, marked,
    * and the list is NOT the start of the feed — so no founding block above it
    * and no "Genesis" badge on its first row.
    */
   jumpPostId?: number;
+}
+
+/**
+ * The top of a cook's feed: what it is, and how to add to it.
+ * Display only.
+ */
+function CookHeader({
+  cook,
+  onOpenCookId,
+}: {
+  cook: Cook;
+  onOpenCookId?: (cookId: string) => void;
+}) {
+  return (
+    <div className="border-b border-zinc-900 pb-4 pt-5">
+      <p className="text-[12.5px] text-zinc-500">
+        {cook.parentId ? (
+          <>
+            Fork of{" "}
+            <button
+              type="button"
+              onClick={() => onOpenCookId?.(cook.parentId as string)}
+              className="text-amber-400 underline-offset-2 hover:underline"
+            >
+              {cook.parentName ?? cook.parentId}
+            </button>
+          </>
+        ) : (
+          cook.kind
+        )}
+      </p>
+      <h2 className="mt-0.5 text-[22px] font-semibold leading-tight tracking-tight text-white break-words">
+        {cook.name}
+      </h2>
+      {cook.pitch && <p className="mt-1.5 text-[15px] leading-snug text-zinc-300">{cook.pitch}</p>}
+      {cook.lesson && (
+        <p className="mt-2 rounded-xl bg-zinc-900 px-3 py-2 text-[13.5px] leading-snug text-zinc-400">
+          <span className="font-semibold text-zinc-200">Early, not wrong. </span>
+          {cook.lesson}
+        </p>
+      )}
+      <p className="mt-2 text-[12.5px] text-zinc-500 tabular-nums">
+        {cook.postCount} {cook.postCount === 1 ? "post" : "posts"} · {cook.bootCount}{" "}
+        {cook.bootCount === 1 ? "boost" : "boosts"} · add to it by starting a post with{" "}
+        <span className="text-zinc-300">{cookTagFor(cook.name)}</span>
+      </p>
+      {cook.liveUrl && (
+        <div className="mt-3 flex gap-2">
+          <a
+            href={cook.liveUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-200 transition-colors hover:bg-zinc-900"
+          >
+            Open the site
+          </a>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function PostList({
@@ -232,6 +297,8 @@ export function PostList({
   onFreeBootUsed,
   bootPrice,
   freeBootsRemaining,
+  cook,
+  onOpenCookId,
   jumpPostId,
 }: PostListProps) {
   // Re-render every 60s to keep timeAgo labels fresh
@@ -248,13 +315,21 @@ export function PostList({
           with the upward-load sentinel, so a prepend can never yank it. The real
           founding conversation now lives in the feed itself (seeded posts), so the
           old hardcoded genesis sample was removed. */}
-      {jumpPostId == null && (mode === "origin" || (mode === "live" && !liveHasMore)) && (
+      {cook ? (
         <>
           <div ref={genesisRef} />
-          <Manifesto onAskAgent={onAskAgent} />
+          <CookHeader cook={cook} onOpenCookId={onOpenCookId} />
         </>
+      ) : (
+        jumpPostId == null &&
+        (mode === "origin" || (mode === "live" && !liveHasMore)) && (
+          <>
+            <div ref={genesisRef} />
+            <Manifesto onAskAgent={onAskAgent} />
+          </>
+        )
       )}
-      {jumpPostId != null && (
+      {jumpPostId != null && !cook && (
         <p className="pb-1 pt-4 text-center text-[12.5px] text-zinc-500">
           From your search. Later posts follow below.
         </p>
@@ -299,7 +374,7 @@ export function PostList({
                   observerRef.current.observe(el);
                 }
               }}
-              className={`py-3 group ${post.id === jumpPostId ? "-mx-4 px-4 bg-amber-500/[0.13]" : ""}`}
+              className={`py-3 group ${post.id === jumpPostId ? "-mx-4 px-4 bg-amber-500/[0.13] " : ""}`}
             >
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
@@ -309,6 +384,7 @@ export function PostList({
                         (ORIGIN always; LIVE once post #1 is reached). No server round-
                         trip — derived from props PostList already has. */}
                     {i === 0 &&
+                      !cook &&
                       jumpPostId == null &&
                       (mode === "origin" || (mode === "live" && !liveHasMore)) && (
                         <span

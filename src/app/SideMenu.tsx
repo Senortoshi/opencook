@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { normalizeSearchQuery, searchSnippet } from "@/lib/post-search";
 import { timeAgo } from "@/lib/utils";
-import type { Post } from "@/types";
+import type { Cook, Post } from "@/types";
 import { searchPosts } from "./actions";
 import type { FeedMode } from "./Feed";
 
@@ -16,6 +16,13 @@ interface SideMenuProps {
   unreadCount: number;
   onGoLive: () => void;
   onGoOrigin: () => void;
+  /** Live cooks, most recently active first. */
+  cooks: Cook[];
+  /** The cook being viewed, if any. */
+  activeCookId: string | null;
+  /** New posts per cook since this device last opened it. */
+  cookUnread: Record<string, number>;
+  onOpenCook: (cook: Cook) => void;
   /** Open the feed at a post found by search. */
   onOpenPost: (post: Post) => void;
 }
@@ -23,9 +30,9 @@ interface SideMenuProps {
 /**
  * Slide-in side menu (phone shell, step 2 of the Cooks plan).
  *
- * Holds the places you can go. Today that is the main feed and the beginning of
- * the feed; cooks get their own rows here later. Read-only navigation — it
- * never touches identity or money, so it never asks for sign-in.
+ * Holds the places you can go: the main feed, the beginning of the feed, and
+ * every cook with a count of what is new in it. Read-only navigation — it never
+ * touches identity or money, so it never asks for sign-in.
  *
  * Always mounted so it can slide; `inert` while closed keeps it out of the tab
  * order and away from screen readers.
@@ -37,6 +44,10 @@ export function SideMenu({
   unreadCount,
   onGoLive,
   onGoOrigin,
+  cooks,
+  activeCookId,
+  cookUnread,
+  onOpenCook,
   onOpenPost,
 }: SideMenuProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -218,8 +229,8 @@ export function SideMenu({
             <button
               type="button"
               onClick={() => go(onGoLive)}
-              aria-current={mode === "live" ? "page" : undefined}
-              className={`${row} ${mode === "live" ? "bg-zinc-900" : ""}`}
+              aria-current={mode === "live" && !activeCookId ? "page" : undefined}
+              className={`${row} ${mode === "live" && !activeCookId ? "bg-zinc-900" : ""}`}
             >
               <span className="min-w-0 flex-1">
                 <span
@@ -241,8 +252,8 @@ export function SideMenu({
             <button
               type="button"
               onClick={() => go(onGoOrigin)}
-              aria-current={mode === "origin" ? "page" : undefined}
-              className={`${row} mt-0.5 ${mode === "origin" ? "bg-zinc-900" : ""}`}
+              aria-current={mode === "origin" && !activeCookId ? "page" : undefined}
+              className={`${row} mt-0.5 ${mode === "origin" && !activeCookId ? "bg-zinc-900" : ""}`}
             >
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[15.5px]">The beginning</span>
@@ -251,6 +262,42 @@ export function SideMenu({
                 </span>
               </span>
             </button>
+
+            {cooks.length > 0 && (
+              <>
+                <span className="block px-2.5 pb-1.5 pt-4 text-[13px] text-zinc-500">Cooks</span>
+                {cooks.map((cook) => {
+                  const unread = cookUnread[cook.id] ?? 0;
+                  const selected = activeCookId === cook.id;
+                  return (
+                    <button
+                      key={cook.id}
+                      type="button"
+                      onClick={() => go(() => onOpenCook(cook))}
+                      aria-current={selected ? "page" : undefined}
+                      className={`${row} mt-0.5 ${selected ? "bg-zinc-900" : ""}`}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span
+                          className={`block truncate text-[15.5px] ${unread > 0 ? "font-semibold" : ""}`}
+                        >
+                          {cook.name}
+                        </span>
+                        <span className="block truncate text-[12.5px] text-zinc-500">
+                          {cook.parentName ? `Fork of ${cook.parentName} · ` : ""}
+                          {cook.postCount} {cook.postCount === 1 ? "post" : "posts"}
+                        </span>
+                      </span>
+                      {unread > 0 && (
+                        <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-amber-500 px-1.5 text-xs font-semibold tabular-nums leading-none text-black">
+                          {unread}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </>
+            )}
           </nav>
         )}
       </aside>

@@ -15,14 +15,17 @@ import { useFeedPolling } from "@/hooks/useFeedPolling";
 import { useScrollTracker } from "@/hooks/useScrollTracker";
 import { MAX_POST_LENGTH } from "@/lib/post-content";
 import { timeAgo } from "@/lib/utils";
-import type { BootboardData, Post } from "@/types";
-import { getForwardPosts, getOlderPosts, getOldestPosts } from "./actions";
+import type { BootboardData, Cook, Post } from "@/types";
+import { getCookPosts, getCooks, getForwardPosts, getOlderPosts, getOldestPosts } from "./actions";
 import { Bootboard } from "./Bootboard";
 import { FundAddress } from "./FundAddress";
 import { Header } from "./Header";
 import { PostForm } from "./PostForm";
 import { PostList } from "./PostList";
 import { SideMenu } from "./SideMenu";
+
+/** localStorage: cook id → the newest post id seen when the cook was last opened. */
+const COOK_READ_KEY = "opencook_cook_read";
 
 // Landing scroll must run before paint (else a flash at the wrong position).
 // useLayoutEffect warns on the server; fall back to useEffect there.
@@ -88,6 +91,65 @@ function FeedContent({
   // Set while the ORIGIN list was opened at a post found by search (it then
   // starts at that post, not at post #1). Cleared by any other navigation.
   const [jumpPostId, setJumpPostId] = useState<number | undefined>(undefined);
+
+  // ── Cooks ── an idea with its own feed (lib/cooks.ts). A cook is VIEWED
+  // through the ORIGIN machinery: a static, non-polled list read top-down, with
+  // the cook's header in place of the founding block and nothing more to load.
+  const [cooks, setCooks] = useState<Cook[]>([]);
+  const [activeCook, setActiveCook] = useState<Cook | null>(null);
+  const activeCookRef = useRef<Cook | null>(null);
+  activeCookRef.current = activeCook;
+  const [cookReadTick, setCookReadTick] = useState(0);
+  // Set further down (it needs state declared later); called from handlePostCreated.
+  const reloadActiveCookRef = useRef<() => void>(() => {});
+
+  const refreshCooks = useCallback(async (): Promise<Cook[]> => {
+    try {
+      const list = await getCooks();
+      setCooks(list);
+      return list;
+    } catch {
+      return [];
+    }
+  }, []);
+
+  // Load cooks on mount, and again each time the menu opens.
+  useEffect(() => {
+    if (menuOpen) refreshCooks();
+  }, [menuOpen, refreshCooks]);
+  useEffect(() => {
+    refreshCooks();
+  }, [refreshCooks]);
+
+  // New posts per cook since this device last opened it. A cook never opened
+  // here counts from where the main feed was last read, so a returning visitor
+  // sees what they missed and a first visit is not a wall of counts.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: cookReadTick re-reads localStorage
+  const cookUnread = useMemo(() => {
+    const out: Record<string, number> = {};
+    let read: Record<string, number> = {};
+    let mainRead = Number.NaN;
+    try {
+      read = JSON.parse(window.localStorage.getItem(COOK_READ_KEY) ?? "{}") ?? {};
+      mainRead = Number(window.localStorage.getItem("opencook_last_read_id"));
+    } catch {
+      // storage blocked — no counts
+    }
+    for (const cook of cooks) {
+      const last = Number.isFinite(read[cook.id])
+        ? read[cook.id]
+        : Number.isFinite(mainRead) && mainRead > 0
+          ? mainRead
+          : (cook.lastPostId ?? 0);
+      const n = cook.recentPostIds.filter((id) => id > last).length;
+      if (n > 0) out[cook.id] = n;
+    }
+    return out;
+  }, [cooks, cookReadTick]);
+  const cookUnreadTotal = useMemo(
+    () => Object.values(cookUnread).reduce((sum, n) => sum + n, 0),
+    [cookUnread]
+  );
   const [userAddress, setUserAddress] = useState("");
   const [userBalance, setUserBalance] = useState<number | undefined>(undefined);
   // Network fee the boot tx needs on top of bootPrice (from the tx builder on an
@@ -169,6 +231,11 @@ function FeedContent({
       ]);
       // Poll 500ms after posting to confirm quickly
       setTimeout(refresh, 500);
+      // In a cook's feed (static, not polled) reload it so the post shows up.
+      if (activeCookRef.current) {
+        setTimeout(() => reloadActiveCookRef.current(), 1200);
+        setTimeout(() => reloadActiveCookRef.current(), 4000);
+      }
     },
     [refresh]
   );
@@ -370,6 +437,7 @@ function FeedContent({
       setOriginHasMore(page.length === 100);
       originHasMoreRef.current = page.length === 100;
       lastOriginIdRef.current = list.at(-1)?.id;
+      setActiveCook(null);
       setJumpPostId(post.id);
       setMode("origin");
       scrollRef.current?.scrollTo({ top: 0 });
@@ -377,6 +445,58 @@ function FeedContent({
     },
     [fading, scrollRef]
   );
+
+  // Open a cook: cross-fade, load its posts, land at the top (its header).
+  const openCook = useCallback(
+    async (cook: Cook) => {
+      if (fading) return;
+      setFading(true);
+      const started = Date.now();
+      const posts = await getCookPosts(cook.id).catch(() => [] as Post[]);
+      const wait = 220 - (Date.now() - started);
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      setOriginPosts(posts);
+      setOriginHasMore(false);
+      originHasMoreRef.current = false;
+      lastOriginIdRef.current = posts.at(-1)?.id;
+      setActiveCook(cook);
+      setJumpPostId(undefined);
+      setMode("origin");
+      scrollRef.current?.scrollTo({ top: 0 });
+      try {
+        const read = JSON.parse(window.localStorage.getItem(COOK_READ_KEY) ?? "{}") ?? {};
+        read[cook.id] = cook.lastPostId ?? 0;
+        window.localStorage.setItem(COOK_READ_KEY, JSON.stringify(read));
+      } catch {
+        // storage blocked — counts just don't clear
+      }
+      setCookReadTick((t) => t + 1);
+      requestAnimationFrame(() => setFading(false));
+    },
+    [fading, scrollRef]
+  );
+
+  const openCookById = useCallback(
+    async (cookId: string) => {
+      const list = cooks.some((c) => c.id === cookId) ? cooks : await refreshCooks();
+      const cook = list.find((c) => c.id === cookId);
+      if (cook) openCook(cook);
+    },
+    [cooks, refreshCooks, openCook]
+  );
+
+  // After posting inside a cook, pull its posts again (the cook view is not polled).
+  const reloadActiveCook = useCallback(async () => {
+    const cook = activeCookRef.current;
+    if (!cook) return;
+    const posts = await getCookPosts(cook.id).catch(() => null);
+    if (!posts || activeCookRef.current?.id !== cook.id) return;
+    setOriginPosts(posts);
+    lastOriginIdRef.current = posts.at(-1)?.id;
+    const fresh = (await refreshCooks()).find((c) => c.id === cook.id);
+    if (fresh && activeCookRef.current?.id === cook.id) setActiveCook(fresh);
+  }, [refreshCooks]);
+  reloadActiveCookRef.current = reloadActiveCook;
 
   // "Genesis" → ORIGIN: cross-fade out, load the oldest window, land at the top,
   // fade in. A ~220ms floor keeps a fast fetch from flickering.
@@ -391,11 +511,11 @@ function FeedContent({
     setOriginHasMore(oldest.length === 100);
     originHasMoreRef.current = oldest.length === 100;
     lastOriginIdRef.current = oldest.at(-1)?.id;
+    setActiveCook(null);
     setJumpPostId(undefined);
     setMode("origin");
-    scrollRef.current?.scrollTo({ top: 0 });
     requestAnimationFrame(() => setFading(false));
-  }, [fading, scrollRef]);
+  }, [fading]);
 
   // "↓ Latest" → LIVE: cross-fade back to a CLEAN newest window (scroll-up state
   // does not persist across a Genesis round-trip).
@@ -410,6 +530,7 @@ function FeedContent({
     olderPostsRef.current = [];
     prependPrevHeightRef.current = null;
     landedRef.current = false; // re-gate loadOlder until the landing effect re-runs
+    setActiveCook(null);
     setJumpPostId(undefined);
     setMode("live");
     requestAnimationFrame(() => setFading(false));
@@ -505,7 +626,7 @@ function FeedContent({
         genesisVisited={genesisVisited}
         onScrollToGenesis={handleGoOrigin}
         onOpenFairness={() => setShowFairness(true)}
-        unreadCount={mode === "live" ? unreadCount : 0}
+        unreadCount={(mode === "live" ? unreadCount : 0) + cookUnreadTotal}
         menuOpen={menuOpen}
         onOpenMenu={() => setMenuOpen(true)}
       />
@@ -516,7 +637,13 @@ function FeedContent({
         mode={mode}
         unreadCount={mode === "live" ? unreadCount : 0}
         onGoLive={handleDownButton}
-        onGoOrigin={mode === "origin" && jumpPostId == null ? scrollToTop : handleGoOrigin}
+        onGoOrigin={
+          mode === "origin" && !activeCook && jumpPostId == null ? scrollToTop : handleGoOrigin
+        }
+        cooks={cooks}
+        activeCookId={activeCook?.id ?? null}
+        cookUnread={cookUnread}
+        onOpenCook={openCook}
         onOpenPost={handleOpenPost}
       />
 
@@ -570,6 +697,8 @@ function FeedContent({
             onFreeBootUsed={handleFreeBootUsed}
             bootPrice={bootPrice}
             freeBootsRemaining={freeBootsRemaining}
+            cook={activeCook}
+            onOpenCookId={openCookById}
             jumpPostId={jumpPostId}
           />
 
@@ -667,6 +796,7 @@ function FeedContent({
             onPostCreated={handlePostCreated}
             onPostRejected={handlePostRejected}
             agentHighlight={agentHighlight}
+            cook={activeCook}
           />
           {/* Attribution — centered. Install bookmark moved to PostForm row
               next to the Ask AI button (2026-06-03), so this row is just the

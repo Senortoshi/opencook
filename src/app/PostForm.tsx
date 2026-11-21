@@ -5,6 +5,7 @@ import { InstallBookmark } from "@/components/InstallBookmark";
 import { PermanenceGate } from "@/components/PermanenceGate";
 import { useIdentityContext } from "@/contexts/IdentityContext";
 import { useVoiceToText } from "@/hooks/useVoiceToText";
+import { cookTagFor, parseCookPost } from "@/lib/cooks";
 import { MAX_POST_LENGTH, normalizePostContent } from "@/lib/post-content";
 import { AgentChat } from "./AgentChat";
 import { createPost } from "./actions";
@@ -13,12 +14,15 @@ interface PostFormProps {
   onPostCreated?: (content: string, author: string, tempId: number) => void;
   onPostRejected?: (tempId: number, reason?: string) => void;
   agentHighlight?: boolean;
+  /** Viewing a cook: posts made here are filed under it (its tag is added). */
+  cook?: { name: string } | null;
 }
 
 export function PostForm({
   onPostCreated,
   onPostRejected,
   agentHighlight,
+  cook,
 }: PostFormProps): React.JSX.Element {
   const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -129,8 +133,16 @@ export function PostForm({
     if (!formRef.current) return;
     // Canonical LF form (see lib/post-content.ts) — the server re-derives this exact
     // string before verifying the signature.
-    const trimmed = normalizePostContent(textareaRef.current?.value ?? "");
-    if (!trimmed || trimmed.length > MAX_POST_LENGTH) return;
+    const typed = normalizePostContent(textareaRef.current?.value ?? "");
+    if (!typed) return;
+    // In a cook's feed, a post that carries no cook tag of its own gets this
+    // cook's tag put in front — the tag is part of the signed text, which is
+    // how the post is filed (lib/cooks.ts).
+    const trimmed =
+      cook && !parseCookPost(typed)
+        ? normalizePostContent(`${cookTagFor(cook.name)} ${typed}`)
+        : typed;
+    if (trimmed.length > MAX_POST_LENGTH) return;
 
     if (!requireIdentity() || !identity) {
       wantedToPostRef.current = true;
@@ -196,7 +208,11 @@ export function PostForm({
           name="content"
           aria-label="Share an idea"
           placeholder={
-            !identity && !needsUnlock ? "Setting up your identity..." : "Share an idea..."
+            !identity && !needsUnlock
+              ? "Setting up your identity..."
+              : cook
+                ? `Add to ${cook.name}...`
+                : "Share an idea..."
           }
           disabled={!identity && !needsUnlock}
           onKeyDown={handleKeyDown}

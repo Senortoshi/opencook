@@ -2,6 +2,16 @@
 
 > Short summaries of each working session. AI agents: add an entry before ending any significant session.
 
+## 2026-11-21 — Cooks, read-only: organized in the side menu, a feed per cook
+
+- **Category:** feature (cooks) — its own small branch, `pr/cooks`, stacked on `pr/search`. Not pushed. Owner sign-off pending on the feature.
+- **Files:** `src/lib/cooks.ts` (+test; tag rules), `src/lib/cooks-db.ts` (`cooks` + `cook_posts`, `seedCooks`, `fileNewPost`, `listCooks`, `cookPosts`), `src/data/cooks-seed.ts` (13 cooks and their pre-tag posts), `src/lib/db.ts` (tables + seed at start-up), `src/app/actions.ts` (`createPost` files a post by its tag inside the insert transaction; `getCooks`, `getCookPosts`), `src/types/index.ts` (`Cook`), `src/app/SideMenu.tsx` (Cooks list with per-device unread counts), `src/app/Feed.tsx` (a cook is viewed through the ORIGIN machinery: static list, cook header on top, polling paused), `src/app/PostList.tsx` (`CookHeader`), `src/app/PostForm.tsx` (inside a cook, an untagged post gets the cook's tag put in front before signing), `src/app/cooks.integration.test.ts`.
+- **Not in this branch:** forking, paying, starting a cook. A tag for a cook that does not exist does nothing.
+- **Also recorded here (DECISIONS):** the fresh-address-per-post work is parked on `parked/per-post-keys` and is in none of these branches; one name and one address per account stands; no faces or colours.
+- **Not touched:** boosts, identity, anything that moves money.
+- **Verified:** `tsc --noEmit` clean; Biome clean on the changed files; unit and integration suites pass on this branch.
+
+
 ## 2026-11-21 — Search: find any post from the side menu and open the feed at it
 
 - **Category:** feature (read-only). Its own small branch, `pr/search`, stacked on `pr/phone-shell` (the two phone-shell commits). Not pushed.

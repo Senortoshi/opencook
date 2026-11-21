@@ -26,6 +26,31 @@ export interface PostRow {
 
 export type Post = PostRow & { boot_count: number };
 
+// ── Cooks ──────────────────────────────────────────────────────────────────
+
+/** An idea with its own feed. Posts land in it by an `OC<name>` tag (lib/cooks.ts). */
+export interface Cook {
+  /** Normalized tag: lowercase letters and digits. */
+  id: string;
+  name: string;
+  /** "Cook", "Spawn #1", "Fork of <parent>" … display only. */
+  kind: string;
+  pitch: string | null;
+  liveUrl: string | null;
+  /** What was learned, for a cook that is early rather than shipped. */
+  lesson: string | null;
+  parentId: string | null;
+  parentName: string | null;
+  founderPostId: number | null;
+  createdAt: string;
+  postCount: number;
+  lastPostId: number | null;
+  lastActive: string | null;
+  bootCount: number;
+  /** Newest post ids (descending) — the menu counts unread from these. */
+  recentPostIds: number[];
+}
+
 // ── Bootboard ──────────────────────────────────────────────────────────────
 
 export interface BootboardRow {

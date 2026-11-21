@@ -1,6 +1,7 @@
 import path from "node:path";
 import Database from "better-sqlite3";
 import { contentId } from "./content-id";
+import { ensureCookTables, seedCooks } from "./cooks-db";
 
 let db: ReturnType<typeof Database>;
 
@@ -98,6 +99,11 @@ try {
       }
     })();
   }
+
+  // Cooks — an index over post tags (lib/cooks.ts). Creates the tables and files
+  // the first cooks' pre-existing posts; additive and idempotent.
+  ensureCookTables(db);
+  seedCooks(db);
 
   // Boot grants — free boot tracking per user (no custody)
   db.exec(`

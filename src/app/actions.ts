@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { screenContent } from "@/lib/content-filter";
 import { contentId } from "@/lib/content-id";
+import { cookPosts, fileNewPost, listCooks } from "@/lib/cooks-db";
 import { db } from "@/lib/db";
 import { tryConsumeFreeBootForIp } from "@/lib/free-boot-cap";
 import {
@@ -30,7 +31,7 @@ import { logPostOnChain } from "@/services/bsv/onchain";
 import { isServerSpendDisabled } from "@/services/bsv/wallet";
 import { executeBoot } from "@/services/fairness/boot-orchestrator";
 import { getBootPrice, getBootPriceForUser } from "@/services/fairness/pricing";
-import type { BootboardData, BootboardHistoryRow, BootboardRow, Post } from "@/types";
+import type { BootboardData, BootboardHistoryRow, BootboardRow, Cook, Post } from "@/types";
 
 export interface CreatePostResult {
   ok: boolean;
@@ -120,14 +121,22 @@ export async function createPost(formData: FormData): Promise<CreatePostResult> 
   // always non-null here — createPost rejects a missing pubkey above.
   const cid = pkStr !== null ? contentId(pkStr, content) : null;
 
-  const result = db
-    .prepare(
-      "INSERT INTO posts (content, author_name, signature, pubkey, content_id) VALUES (?, ?, ?, ?, ?)"
-    )
-    .run(content, authorName, sigStr, pkStr, cid);
+  // One transaction: the post and its cook filing land together.
+  const postId = db.transaction(() => {
+    const inserted = db
+      .prepare(
+        "INSERT INTO posts (content, author_name, signature, pubkey, content_id) VALUES (?, ?, ?, ?, ?)"
+      )
+      .run(content, authorName, sigStr, pkStr, cid);
+    const id = inserted.lastInsertRowid as number;
+    // Cooks: file the post under the cook its text is tagged with (and create
+    // the cook when the post is a valid fork). An index only — the tag is in
+    // the signed post text. See lib/cooks.ts.
+    fileNewPost(db, id, content);
+    return id;
+  })();
 
   // Fire-and-forget: log on-chain, update tx_id if successful
-  const postId = result.lastInsertRowid as number;
 
   logPostOnChain({
     content,
@@ -249,6 +258,17 @@ export async function getForwardPosts(afterId: number): Promise<Post[]> {
     LIMIT 100
   `)
     .all(afterId) as Post[];
+}
+
+/** Every cook, most recently active first (side menu + cook headers). Read-only. */
+export async function getCooks(): Promise<Cook[]> {
+  return listCooks(db);
+}
+
+/** One cook's posts in chat order (oldest first). Read-only. */
+export async function getCookPosts(cookId: string): Promise<Post[]> {
+  if (typeof cookId !== "string" || cookId.length > 64) return [];
+  return cookPosts(db, cookId);
 }
 
 /**
