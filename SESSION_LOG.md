@@ -2,6 +2,14 @@
 
 > Short summaries of each working session. AI agents: add an entry before ending any significant session.
 
+## 2026-11-21 — Fork a cook: pay-to-go-live
+
+- **Category:** feature (fork) — its own branch, `pr/fork`, stacked on `pr/cooks`. Not pushed. **Unaudited; the fee amount is a deploy blocker (DECISIONS "Fork a cook").**
+- **Files:** `src/lib/cooks-db.ts` (forks created PENDING; `cookStatus`; `activateCook`; status columns added when missing), `src/lib/pubkey.ts` (+test; `normalizePubkey`), `src/app/actions.ts` (`getCookStatus`, `activateFork`), `src/lib/pending-forks.ts` (+test), `src/services/bsv/fork-pay.ts` (pays through the existing boost pieces unchanged, then `activateFork`), new `src/components/ForkModal.tsx`, `src/app/PostList.tsx` (Fork button), `src/app/SideMenu.tsx` ("Waiting for payment" rows), `src/app/Feed.tsx` (fork screen wiring), fork cases in `src/app/cooks.integration.test.ts`.
+- **Not touched:** `client-boot.ts`, `useBoot.ts`, `/api/boot-confirm`, `/api/boot-shares`, payouts, the split.
+- **Verified:** `tsc --noEmit` clean; Biome clean on the changed files; unit and integration suites pass. A fork has NOT been taken live with a real payment; the pay-then-activate rules are covered by integration tests with a recorded boost. `fork-pay.ts` has no unit test of its own.
+
+
 ## 2026-11-21 — Cooks, read-only: organized in the side menu, a feed per cook
 
 - **Category:** feature (cooks) — its own small branch, `pr/cooks`, stacked on `pr/search`. Not pushed. Owner sign-off pending on the feature.

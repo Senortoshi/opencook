@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { PendingFork } from "@/lib/pending-forks";
 import { normalizeSearchQuery, searchSnippet } from "@/lib/post-search";
 import { timeAgo } from "@/lib/utils";
 import type { Cook, Post } from "@/types";
@@ -23,6 +24,9 @@ interface SideMenuProps {
   /** New posts per cook since this device last opened it. */
   cookUnread: Record<string, number>;
   onOpenCook: (cook: Cook) => void;
+  /** Forks this device started that still wait for their payment. */
+  pendingForks: PendingFork[];
+  onResumeFork: (fork: PendingFork) => void;
   /** Open the feed at a post found by search. */
   onOpenPost: (post: Post) => void;
 }
@@ -32,7 +36,8 @@ interface SideMenuProps {
  *
  * Holds the places you can go: the main feed, the beginning of the feed, and
  * every cook with a count of what is new in it. Read-only navigation — it never
- * touches identity or money, so it never asks for sign-in.
+ * touches identity or money, so it never asks for sign-in. (A waiting fork's
+ * row opens the fork screen, which does its own sign-in check.)
  *
  * Always mounted so it can slide; `inert` while closed keeps it out of the tab
  * order and away from screen readers.
@@ -48,6 +53,8 @@ export function SideMenu({
   activeCookId,
   cookUnread,
   onOpenCook,
+  pendingForks,
+  onResumeFork,
   onOpenPost,
 }: SideMenuProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -262,6 +269,32 @@ export function SideMenu({
                 </span>
               </span>
             </button>
+
+            {pendingForks.length > 0 && (
+              <>
+                <span className="block px-2.5 pb-1.5 pt-4 text-[13px] text-zinc-500">
+                  Waiting for payment
+                </span>
+                {pendingForks.map((fork) => (
+                  <button
+                    key={fork.id}
+                    type="button"
+                    onClick={() => go(() => onResumeFork(fork))}
+                    className={`${row} mt-0.5`}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15.5px]">{fork.name}</span>
+                      <span className="block truncate text-[12.5px] text-zinc-500">
+                        Fork of {fork.parentName} · not live yet
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-[12.5px] font-medium text-amber-400">
+                      Finish
+                    </span>
+                  </button>
+                ))}
+              </>
+            )}
 
             {cooks.length > 0 && (
               <>

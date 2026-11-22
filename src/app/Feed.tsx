@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BootToast } from "@/components/BootToast";
 import { FairnessModal } from "@/components/FairnessModal";
+import { ForkModal } from "@/components/ForkModal";
 import { HomeScreenWelcomeGate } from "@/components/HomeScreenWelcomeGate";
 import { InAppPromptModal } from "@/components/InAppPromptModal";
 import { InstallPitch } from "@/components/InstallPitch";
@@ -13,6 +14,7 @@ import { IdentityProvider, useIdentityContext } from "@/contexts/IdentityContext
 import { InstallProvider } from "@/contexts/InstallContext";
 import { useFeedPolling } from "@/hooks/useFeedPolling";
 import { useScrollTracker } from "@/hooks/useScrollTracker";
+import { loadPendingForks, PENDING_FORKS_EVENT, type PendingFork } from "@/lib/pending-forks";
 import { MAX_POST_LENGTH } from "@/lib/post-content";
 import { timeAgo } from "@/lib/utils";
 import type { BootboardData, Cook, Post } from "@/types";
@@ -99,6 +101,10 @@ function FeedContent({
   const [activeCook, setActiveCook] = useState<Cook | null>(null);
   const activeCookRef = useRef<Cook | null>(null);
   activeCookRef.current = activeCook;
+  const [pendingForks, setPendingForks] = useState<PendingFork[]>([]);
+  const [forkTarget, setForkTarget] = useState<{ parent?: Cook; resume?: PendingFork } | null>(
+    null
+  );
   const [cookReadTick, setCookReadTick] = useState(0);
   // Set further down (it needs state declared later); called from handlePostCreated.
   const reloadActiveCookRef = useRef<() => void>(() => {});
@@ -119,6 +125,20 @@ function FeedContent({
   }, [menuOpen, refreshCooks]);
   useEffect(() => {
     refreshCooks();
+    const readPending = () => {
+      try {
+        setPendingForks(loadPendingForks(window.localStorage));
+      } catch {
+        setPendingForks([]);
+      }
+    };
+    readPending();
+    window.addEventListener(PENDING_FORKS_EVENT, readPending);
+    window.addEventListener("storage", readPending);
+    return () => {
+      window.removeEventListener(PENDING_FORKS_EVENT, readPending);
+      window.removeEventListener("storage", readPending);
+    };
   }, [refreshCooks]);
 
   // New posts per cook since this device last opened it. A cook never opened
@@ -644,6 +664,8 @@ function FeedContent({
         activeCookId={activeCook?.id ?? null}
         cookUnread={cookUnread}
         onOpenCook={openCook}
+        pendingForks={pendingForks}
+        onResumeFork={(fork) => setForkTarget({ resume: fork })}
         onOpenPost={handleOpenPost}
       />
 
@@ -698,6 +720,7 @@ function FeedContent({
             bootPrice={bootPrice}
             freeBootsRemaining={freeBootsRemaining}
             cook={activeCook}
+            onFork={() => activeCook && setForkTarget({ parent: activeCook })}
             onOpenCookId={openCookById}
             jumpPostId={jumpPostId}
           />
@@ -815,6 +838,25 @@ function FeedContent({
       </div>
 
       {/* Fund address modal */}
+      {forkTarget && (
+        <ForkModal
+          parent={forkTarget.parent}
+          resume={forkTarget.resume}
+          feeSats={bootPrice}
+          onClose={() => setForkTarget(null)}
+          onLive={(cookId) => {
+            setForkTarget(null);
+            openCookById(cookId);
+          }}
+          onFundNeeded={(address, balance, fee) => {
+            setUserAddress(address);
+            setUserBalance(balance);
+            setFundFee(fee);
+            setShowFundModal(true);
+          }}
+        />
+      )}
+
       {showFundModal && userAddress && (
         <FundAddress
           address={userAddress}

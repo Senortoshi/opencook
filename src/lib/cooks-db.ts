@@ -8,7 +8,7 @@
  *                   and the post that founded it.
  *   - `cook_posts`  which cook a post is filed under (a post is in at most one).
  *
- * Deliberately NOT here: any payout or split, and any way to START a cook. Paying a cook is a separate,
+ * Deliberately NOT here: any payout or split. Paying a cook is a separate,
  * undecided piece (owner call) and nothing in this file moves or assigns money.
  */
 
@@ -34,9 +34,26 @@ export function ensureCookTables(db: Db): void {
       lesson TEXT,
       parent_id TEXT,
       founder_post_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'live',
+      activation_txid TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+  // A database that got an earlier shape of this table (no status columns)
+  // is brought up to date; CREATE TABLE IF NOT EXISTS alone would not do it.
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(cooks)").all() as { name: string }[]).map((c) => c.name)
+  );
+  if (!columns.has("status")) {
+    db.exec("ALTER TABLE cooks ADD COLUMN status TEXT NOT NULL DEFAULT 'live'");
+  }
+  if (!columns.has("activation_txid")) {
+    db.exec("ALTER TABLE cooks ADD COLUMN activation_txid TEXT");
+  }
+  // One payment can take ONE fork live.
+  db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_cooks_activation ON cooks(activation_txid) WHERE activation_txid IS NOT NULL"
+  );
   db.exec(`
     CREATE TABLE IF NOT EXISTS cook_posts (
       post_id INTEGER PRIMARY KEY REFERENCES posts(id) ON DELETE CASCADE,
@@ -79,22 +96,50 @@ export function seedCooks(db: Db): number {
 }
 
 /**
- * File a NEW post under the cook named by the tag at the start of its text.
- * Call inside the same transaction that inserts the post. Returns the cook it
- * was filed under, for tests.
+ * File a NEW post by the tag at the start of its text, creating the cook when
+ * the post is a valid fork (`OCnew fork of OCparent`). Call inside the same
+ * transaction that inserts the post. Returns what happened, for tests.
  *
- * A tag for a cook that does not exist files nothing and creates nothing:
- * starting a cook (from nothing, or as a fork) is not open in this version.
+ * A fork is created PENDING and goes live only once paid for.
+ *
+ * A tag for a cook that does not exist files nothing: starting a brand-new
+ * cook from nothing is not open yet (it is meant to cost something — owner
+ * decision pending), so only forks of an existing cook create one.
  */
-export function fileNewPost(db: Db, postId: number, content: string): { cookId: string } | null {
+export function fileNewPost(
+  db: Db,
+  postId: number,
+  content: string
+): { cookId: string; created: boolean } | null {
   const parsed = parseCookPost(content);
   if (!parsed) return null;
-  if (!db.prepare("SELECT 1 FROM cooks WHERE id = ?").get(parsed.cookId)) return null;
+  const exists = (id: string) => !!db.prepare("SELECT 1 FROM cooks WHERE id = ?").get(id);
+
+  let created = false;
+  if (!exists(parsed.cookId)) {
+    if (!parsed.forkOf || !exists(parsed.forkOf)) return null;
+    const parent = db.prepare("SELECT name FROM cooks WHERE id = ?").get(parsed.forkOf) as {
+      name: string;
+    };
+    // A fork starts PENDING: it is not listed and has no feed until a payment
+    // is executed for it (see `activateCook`).
+    db.prepare(
+      "INSERT INTO cooks (id, name, kind, pitch, parent_id, founder_post_id, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')"
+    ).run(
+      parsed.cookId,
+      parsed.name,
+      `Fork of ${parent.name}`,
+      parsed.pitch || null,
+      parsed.forkOf,
+      postId
+    );
+    created = true;
+  }
   db.prepare("INSERT OR IGNORE INTO cook_posts (post_id, cook_id) VALUES (?, ?)").run(
     postId,
     parsed.cookId
   );
-  return { cookId: parsed.cookId };
+  return { cookId: parsed.cookId, created };
 }
 
 interface CookRow {
@@ -127,6 +172,7 @@ export function listCooks(db: Db): Cook[] {
       LEFT JOIN cooks parent ON parent.id = c.parent_id
       LEFT JOIN cook_posts cp ON cp.cook_id = c.id
       LEFT JOIN posts p ON p.id = cp.post_id
+      WHERE c.status = 'live'
       GROUP BY c.id
       ORDER BY COALESCE(MAX(cp.post_id), 0) DESC, c.created_at DESC
     `)
@@ -172,4 +218,131 @@ export function cookPosts(db: Db, cookId: string): Post[] {
     `)
     .all(id, COOK_POSTS_MAX) as Post[];
   return rows.reverse();
+}
+
+export interface CookStatus {
+  id: string;
+  name: string;
+  status: "live" | "pending";
+  parentId: string | null;
+  parentName: string | null;
+  /** The post a fork's payment must boost: the PARENT's founding post. */
+  payPostId: number | null;
+}
+
+/** One cook's status (live or still waiting for payment). Null if unknown. */
+export function cookStatus(db: Db, cookId: string): CookStatus | null {
+  const id = cookIdFrom(cookId);
+  if (!id) return null;
+  const row = db
+    .prepare(`
+      SELECT c.id, c.name, c.status, c.parent_id, parent.name AS parent_name,
+        parent.founder_post_id AS pay_post_id
+      FROM cooks c LEFT JOIN cooks parent ON parent.id = c.parent_id
+      WHERE c.id = ?
+    `)
+    .get(id) as
+    | {
+        id: string;
+        name: string;
+        status: string;
+        parent_id: string | null;
+        parent_name: string | null;
+        pay_post_id: number | null;
+      }
+    | undefined;
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    status: row.status === "live" ? "live" : "pending",
+    parentId: row.parent_id,
+    parentName: row.parent_name,
+    payPostId: row.pay_post_id,
+  };
+}
+
+export type ActivateResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason:
+        | "unknown_cook"
+        | "no_payment"
+        | "wrong_post"
+        | "wrong_payer"
+        | "not_paid"
+        | "too_old"
+        | "used";
+    };
+
+/**
+ * Take a pending fork live — only against a RECORDED, PAID boost.
+ *
+ * `txid` must be a boost that `/api/boot-confirm` already verified and
+ * recorded (so the money really moved, to the split the server checked), and:
+ *   - it boosted the PARENT cook's founding post (the original author and the
+ *     contributors are who got paid);
+ *   - it was paid by `payerAddress` — the caller has already verified that this
+ *     address signed `spawnMessage(cookId, txid)`;
+ *   - it was a paid boost, not a server-funded free one;
+ *   - it happened after the fork was created (an old boost can't be reused);
+ *   - it has not already taken another fork live (unique index).
+ * Already-live is success, so a retry after a dropped response is harmless.
+ */
+export function activateCook(
+  db: Db,
+  input: { cookId: string; txid: string; payerAddress: string }
+): ActivateResult {
+  const cook = db
+    .prepare(`
+      SELECT c.id, c.status, c.created_at, c.activation_txid,
+        parent.founder_post_id AS pay_post_id
+      FROM cooks c LEFT JOIN cooks parent ON parent.id = c.parent_id
+      WHERE c.id = ?
+    `)
+    .get(input.cookId) as
+    | {
+        id: string;
+        status: string;
+        created_at: string;
+        activation_txid: string | null;
+        pay_post_id: number | null;
+      }
+    | undefined;
+  if (!cook) return { ok: false, reason: "unknown_cook" };
+  if (cook.status === "live") {
+    return cook.activation_txid === null || cook.activation_txid === input.txid
+      ? { ok: true }
+      : { ok: false, reason: "used" };
+  }
+
+  const boost = db
+    .prepare(`
+      SELECT b.post_id, b.boosted_by, b.is_free, b.booted_at
+      FROM payouts py JOIN bootboard b ON b.id = py.boot_event_id
+      WHERE py.txid = ? LIMIT 1
+    `)
+    .get(input.txid) as
+    | { post_id: number; boosted_by: string; is_free: number; booted_at: string }
+    | undefined;
+  if (!boost) return { ok: false, reason: "no_payment" };
+  if (cook.pay_post_id === null || boost.post_id !== cook.pay_post_id) {
+    return { ok: false, reason: "wrong_post" };
+  }
+  if (boost.boosted_by !== input.payerAddress) return { ok: false, reason: "wrong_payer" };
+  if (boost.is_free !== 0) return { ok: false, reason: "not_paid" };
+  if (boost.booted_at < cook.created_at) return { ok: false, reason: "too_old" };
+
+  try {
+    const changed = db
+      .prepare(
+        "UPDATE cooks SET status = 'live', activation_txid = ? WHERE id = ? AND status = 'pending'"
+      )
+      .run(input.txid, cook.id).changes;
+    return changed === 1 ? { ok: true } : { ok: false, reason: "used" };
+  } catch {
+    // Unique index: this payment already took another fork live.
+    return { ok: false, reason: "used" };
+  }
 }

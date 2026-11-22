@@ -1,5 +1,6 @@
 /**
- * Integration tests for cooks: the first cooks, and filing posts by tag.
+ * Integration tests for cooks: the first cooks, filing posts by tag, forking,
+ * and "a fork does not go live until its payment is executed".
  * In-memory SQLite; on-chain logging and the server wallet are mocked.
  */
 
@@ -24,9 +25,10 @@ vi.mock("next/headers", () => ({
 }));
 
 import { COOK_SEEDS } from "@/data/cooks-seed";
+import { forkPostText, spawnMessage } from "@/lib/cooks";
 import { seedCooks } from "@/lib/cooks-db";
 import { db } from "@/lib/db";
-import { createPost, getCookPosts, getCooks } from "./actions";
+import { activateFork, createPost, getCookPosts, getCookStatus, getCooks } from "./actions";
 
 function sign(key: PrivateKey, message: string): string {
   return key.sign(Array.from(new TextEncoder().encode(message))).toDER("hex") as string;
@@ -44,6 +46,31 @@ async function postAs(content: string, key = PrivateKey.fromRandom()) {
   const result = await createPost(fd);
   const row = db.prepare("SELECT id FROM posts ORDER BY id DESC LIMIT 1").get() as { id: number };
   return { result, id: row.id };
+}
+
+let txCounter = 0;
+/** Record a boost the way /api/boot-confirm does: a bootboard row plus payouts under one txid. */
+function recordBoost(postId: number, payerAddress: string, opts: { free?: boolean } = {}): string {
+  txCounter++;
+  const txid = txCounter.toString(16).padStart(64, "0");
+  const boot = db
+    .prepare(
+      "INSERT INTO bootboard (post_id, boosted_by, boosted_by_name, is_free) VALUES (?,?,?,?)"
+    )
+    .run(postId, payerAddress, "anon_pay", opts.free ? 1 : 0);
+  db.prepare(
+    "INSERT INTO payouts (boot_event_id, recipient_pubkey, recipient_address, amount_sats, payout_type, txid) VALUES (?,?,?,?,?,?)"
+  ).run(boot.lastInsertRowid, "pk", "1Recipient", 1000, "pool_share", txid);
+  return txid;
+}
+
+function activate(cookId: string, txid: string, payer: PrivateKey, signer = payer) {
+  return activateFork(
+    cookId,
+    txid,
+    payer.toPublicKey().toString(),
+    sign(signer, spawnMessage(cookId, txid))
+  );
 }
 
 /** A live parent cook with one founding post. */
@@ -114,14 +141,108 @@ describe("cooks — integration", () => {
     makeParent();
     await postAs("OCbrandnew my idea");
     expect(await getCooks()).toHaveLength(1);
+    expect(await getCookStatus("brandnew")).toBeNull();
   });
 
-  it("a fork-style post starts no cook in this version", async () => {
+  it("a fork is created waiting, is not listed, and goes live only once paid", async () => {
+    const founder = makeParent();
+    const forker = PrivateKey.fromRandom();
+    const forkerAddress = forker.toPublicKey().toAddress().toString();
+
+    await postAs(forkPostText("FrogRun", "Froge", "an endless runner"));
+    expect(await getCookStatus("frogrun")).toEqual({
+      id: "frogrun",
+      name: "FrogRun",
+      status: "pending",
+      parentId: "froge",
+      parentName: "Froge",
+      payPostId: founder,
+    });
+    expect((await getCooks()).map((c) => c.id)).toEqual(["froge"]); // not listed yet
+
+    // No payment recorded → stays waiting.
+    expect(await activate("frogrun", "f".repeat(64), forker)).toEqual({
+      ok: false,
+      reason: "no_payment",
+    });
+
+    const txid = recordBoost(founder, forkerAddress);
+    expect(await activate("frogrun", txid, forker)).toEqual({ ok: true });
+    expect((await getCookStatus("frogrun"))?.status).toBe("live");
+
+    const cooks = await getCooks();
+    expect(cooks.map((c) => c.id)).toEqual(["frogrun", "froge"]);
+    expect(cooks[0]).toMatchObject({ kind: "Fork of Froge", parentId: "froge", postCount: 1 });
+    expect(cooks[0].pitch).toBe("an endless runner");
+    // Asking again after a dropped reply is harmless.
+    expect(await activate("frogrun", txid, forker)).toEqual({ ok: true });
+  });
+
+  it("refuses payments that are not a real, own, paid boost of the parent's founding post", async () => {
+    const founder = makeParent();
+    const other = db
+      .prepare("INSERT INTO posts (content, author_name) VALUES ('another post', 'anon_x')")
+      .run().lastInsertRowid as number;
+    const forker = PrivateKey.fromRandom();
+    const forkerAddress = forker.toPublicKey().toAddress().toString();
+    const stranger = PrivateKey.fromRandom();
+    const strangerAddress = stranger.toPublicKey().toAddress().toString();
+
+    // A boost made BEFORE the fork existed cannot be reused.
+    const early = recordBoost(founder, forkerAddress);
+    db.prepare("UPDATE bootboard SET booted_at = '2026-01-01 00:00:00'").run();
+    await postAs(forkPostText("FrogRun", "Froge", ""));
+    expect(await activate("frogrun", early, forker)).toEqual({ ok: false, reason: "too_old" });
+
+    // A boost of some other post.
+    expect(await activate("frogrun", recordBoost(other, forkerAddress), forker)).toEqual({
+      ok: false,
+      reason: "wrong_post",
+    });
+    // A server-funded free boost is not a payment.
+    expect(
+      await activate("frogrun", recordBoost(founder, forkerAddress, { free: true }), forker)
+    ).toEqual({ ok: false, reason: "not_paid" });
+    // Somebody else's boost: the forker can sign, but did not pay it.
+    const theirs = recordBoost(founder, strangerAddress);
+    expect(await activate("frogrun", theirs, forker)).toEqual({ ok: false, reason: "wrong_payer" });
+    // Claiming to be the payer without their key.
+    expect(await activate("frogrun", theirs, stranger, forker)).toEqual({
+      ok: false,
+      reason: "invalid_signature",
+    });
+    expect(await activateFork("frogrun", "zz", "nope", "00")).toEqual({
+      ok: false,
+      reason: "bad_input",
+    });
+    expect((await getCookStatus("frogrun"))?.status).toBe("pending");
+  });
+
+  it("one payment takes one fork live, not two", async () => {
+    const founder = makeParent();
+    const forker = PrivateKey.fromRandom();
+    const forkerAddress = forker.toPublicKey().toAddress().toString();
+    await postAs(forkPostText("FrogRun", "Froge", ""));
+    await postAs(forkPostText("FrogSwim", "Froge", ""));
+
+    const txid = recordBoost(founder, forkerAddress);
+    expect(await activate("frogrun", txid, forker)).toEqual({ ok: true });
+    expect(await activate("frogswim", txid, forker)).toEqual({ ok: false, reason: "used" });
+    expect((await getCookStatus("frogswim"))?.status).toBe("pending");
+    // A second, separate payment does it.
+    expect(await activate("frogswim", recordBoost(founder, forkerAddress), forker)).toEqual({
+      ok: true,
+    });
+  });
+
+  it("a fork needs a parent that exists, and a taken name just files the post", async () => {
     makeParent();
-    await postAs("OCfrogrun fork of OCfroge\nan endless runner");
+    await postAs("OCghost fork of OCnowhere\nno such parent");
+    expect(await getCookStatus("ghost")).toBeNull();
+
+    // `froge` already exists: this is an ordinary post into froge, not a new cook.
+    await postAs("OCfroge fork of OCfroge");
     expect((await getCooks()).map((c) => c.id)).toEqual(["froge"]);
-    expect(await getCookPosts("frogrun")).toEqual([]);
-    // It is still an ordinary post in the main feed, not filed under the parent.
-    expect(await getCookPosts("froge")).toHaveLength(1);
+    expect(await getCookPosts("froge")).toHaveLength(2);
   });
 });

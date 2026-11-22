@@ -3,7 +3,15 @@
 import { headers } from "next/headers";
 import { screenContent } from "@/lib/content-filter";
 import { contentId } from "@/lib/content-id";
-import { cookPosts, fileNewPost, listCooks } from "@/lib/cooks-db";
+import { spawnMessage } from "@/lib/cooks";
+import {
+  activateCook,
+  type CookStatus,
+  cookPosts,
+  cookStatus,
+  fileNewPost,
+  listCooks,
+} from "@/lib/cooks-db";
 import { db } from "@/lib/db";
 import { tryConsumeFreeBootForIp } from "@/lib/free-boot-cap";
 import {
@@ -12,6 +20,7 @@ import {
   normalizePostContent,
 } from "@/lib/post-content";
 import { likePattern, normalizeSearchQuery, SEARCH_LIMIT } from "@/lib/post-search";
+import { normalizePubkey } from "@/lib/pubkey";
 import { rateLimit } from "@/lib/rate-limit";
 import {
   FREE_BOOT_COST_SATS,
@@ -269,6 +278,58 @@ export async function getCooks(): Promise<Cook[]> {
 export async function getCookPosts(cookId: string): Promise<Post[]> {
   if (typeof cookId !== "string" || cookId.length > 64) return [];
   return cookPosts(db, cookId);
+}
+
+/** Is this cook live, or a fork still waiting for its payment? Read-only. */
+export async function getCookStatus(cookId: string): Promise<CookStatus | null> {
+  if (typeof cookId !== "string" || cookId.length > 64) return null;
+  return cookStatus(db, cookId);
+}
+
+/**
+ * Take a pending fork live once its payment is executed.
+ *
+ * The payment is an ordinary PAID boost of the parent cook's founding post,
+ * already verified and recorded by `/api/boot-confirm`. Here the payer proves
+ * the payment is meant for THIS fork by signing `spawn:<cookId>:<txid>` with
+ * the key that paid; the address is DERIVED from the verified pubkey, never
+ * taken from the client. No money moves in this action.
+ */
+export async function activateFork(
+  cookId: string,
+  txid: string,
+  payerPubkey: string,
+  signature: string
+): Promise<{ ok: boolean; reason?: string }> {
+  if (
+    typeof cookId !== "string" ||
+    cookId.length > 64 ||
+    typeof txid !== "string" ||
+    !/^[0-9a-fA-F]{64}$/.test(txid) ||
+    typeof signature !== "string" ||
+    !/^[0-9a-fA-F]{16,200}$/.test(signature)
+  ) {
+    return { ok: false, reason: "bad_input" };
+  }
+  const pubkey = normalizePubkey(payerPubkey);
+  if (!pubkey) return { ok: false, reason: "bad_input" };
+  const rl = rateLimit(`activateFork:${pubkey}`, { limit: 20, windowMs: 60_000 });
+  if (!rl.success) return { ok: false, reason: "rate_limited" };
+
+  const cleanTxid = txid.toLowerCase();
+  let payerAddress: string;
+  try {
+    const { PublicKey, Signature } = await getBsvSdk();
+    const key = PublicKey.fromString(pubkey);
+    const message = Array.from(new TextEncoder().encode(spawnMessage(cookId, cleanTxid)));
+    if (!key.verify(message, Signature.fromDER(signature, "hex"))) {
+      return { ok: false, reason: "invalid_signature" };
+    }
+    payerAddress = key.toAddress().toString();
+  } catch {
+    return { ok: false, reason: "invalid_signature" };
+  }
+  return activateCook(db, { cookId, txid: cleanTxid, payerAddress });
 }
 
 /**

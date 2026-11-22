@@ -207,6 +207,7 @@ interface PostListProps {
   freeBootsRemaining: number;
   /** Viewing one cook: its header replaces the founding block at the top. */
   cook?: Cook | null;
+  onFork?: () => void;
   /** Open another cook (the "fork of" link in a fork's header). */
   onOpenCookId?: (cookId: string) => void;
   /**
@@ -218,14 +219,16 @@ interface PostListProps {
 }
 
 /**
- * The top of a cook's feed: what it is, and how to add to it.
- * Display only.
+ * The top of a cook's feed: what it is, how to add to it, and Fork.
+ * Display only; Fork opens the fork screen, which does its own sign-in check.
  */
 function CookHeader({
   cook,
+  onFork,
   onOpenCookId,
 }: {
   cook: Cook;
+  onFork?: () => void;
   onOpenCookId?: (cookId: string) => void;
 }) {
   return (
@@ -261,8 +264,15 @@ function CookHeader({
         {cook.bootCount === 1 ? "boost" : "boosts"} · add to it by starting a post with{" "}
         <span className="text-zinc-300">{cookTagFor(cook.name)}</span>
       </p>
-      {cook.liveUrl && (
-        <div className="mt-3 flex gap-2">
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={onFork}
+          className="rounded-full bg-amber-500 px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-amber-400"
+        >
+          Fork
+        </button>
+        {cook.liveUrl && (
           <a
             href={cook.liveUrl}
             target="_blank"
@@ -271,8 +281,8 @@ function CookHeader({
           >
             Open the site
           </a>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -298,6 +308,7 @@ export function PostList({
   bootPrice,
   freeBootsRemaining,
   cook,
+  onFork,
   onOpenCookId,
   jumpPostId,
 }: PostListProps) {
@@ -318,7 +329,7 @@ export function PostList({
       {cook ? (
         <>
           <div ref={genesisRef} />
-          <CookHeader cook={cook} onOpenCookId={onOpenCookId} />
+          <CookHeader cook={cook} onFork={onFork} onOpenCookId={onOpenCookId} />
         </>
       ) : (
         jumpPostId == null &&
