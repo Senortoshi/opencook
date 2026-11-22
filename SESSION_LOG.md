@@ -2,6 +2,15 @@
 
 > Short summaries of each working session. AI agents: add an entry before ending any significant session.
 
+## 2026-11-21 — Rule: sessions end with a push to the fork, conversations included
+
+- **Category:** process / tooling. No app code changed.
+- **Files:** new `scripts/export-convos.mjs` (+ `npm run convos`); `CLAUDE.md` (Hard Rule 8 rewritten, Rule 9 added, Rule 6 exception, key-file entry); `DECISIONS.md` ("Sessions end with a push to the contributor's fork"); `build-journal/README.md`; `build-journal/` committed for the first time, with `convos/` holding the five sessions so far.
+- **Decided by the contributor:** full transcripts in the public fork (not summaries, not a private repo); pasted messages from other people published unchanged; auto-push to the fork only.
+- **Ruled out:** auto-push to `upstream` or `master`; a hook that pushes with no AI in the loop.
+- **Not verified:** the blanking patterns were checked against the five existing sessions only (no key, email or machine path left in the output). There is no unit test for the script.
+- **Left alone:** the parked GitHub reader, `network.ts`, and the `.env.example` / `.gitignore` edits from another session are still uncommitted.
+
 ## 2026-11-21 — Fork a cook: pay-to-go-live
 
 - **Category:** feature (fork) — its own branch, `pr/fork`, stacked on `pr/cooks`. Not pushed. **Unaudited; the fee amount is a deploy blocker (DECISIONS "Fork a cook").**

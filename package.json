@@ -10,6 +10,7 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "generate-icons": "node scripts/generate-icons.mjs",
+    "convos": "node scripts/export-convos.mjs",
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:watch": "vitest"

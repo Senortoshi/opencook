@@ -543,6 +543,17 @@ Step 5 (fork half) of the Cooks master plan, at the contributor's direction: "we
 - **OPEN — the fee amount (deploy blocker).** The master plan sets a fork at 1 BSV. What is built charges the CURRENT BOOST PRICE, because `/api/boot-shares` only prices a normal boost and `activateCook` does not check an amount. Reaching 1 BSV needs `/api/boot-shares` to build shares for a stated fork amount and `activateCook` to require the payment's total to be at least the fee. Both touch the money path and want the owner's yes and an audit. Until then a fork is nearly free.
 - **Other limits:** a forker who is already a contributor gets part of their own fee back through the pool; nobody can rename or remove a cook; a fork's name is first come, first served, including while pending. Starting a brand-new cook from nothing stays closed (paid spawn, plan step 4, is not built).
 
+## Sessions end with a push to the contributor's fork, conversations included (2026-11-21)
+
+The contributor asked for a standing rule: updates and every conversation go to their GitHub fork without being asked each time. This replaces the old Hard Rule 8 ("always ask before pushing"), which was written when a push could surprise someone reviewing on another device.
+
+- **What pushes on its own:** the current branch, to `origin`, at the end of a session, when `origin` is the contributor's personal fork.
+- **What still needs a yes each time:** a push to `upstream` (the main repo) or any other remote, a push to `master`, a force-push, deleting a remote branch.
+- **Conversations:** `scripts/export-convos.mjs` writes each session to `build-journal/convos/` as typed text and AI replies. Tool calls and their output are left out because they can carry file contents and env values; the AI's private reasoning is left out too. Keys, emails and machine paths are blanked by pattern.
+- **Raw, not curated — the contributor's call.** Offered a curated summary per session (the journal's original rule) or a private repo for transcripts; the contributor chose full transcripts in the public fork.
+- **Other people's pasted messages are published as they are — also the contributor's call.** Three early sessions contain chat messages pasted from another person. Offered blanking them or holding those sessions back; the contributor chose to publish them unchanged. This is the one exception to Hard Rule 6, and it covers `build-journal/convos/` only.
+- **Not done:** no hook runs this automatically; it is a rule the AI follows at session end. Git history keeps anything pushed, so a transcript cannot be fully taken back later.
+
 ## Fresh address per post: built, then parked. One name, one address, no faces (2026-11-21)
 
 A fresh signing key and address for every post ("rotating addresses") was built on 2026-11-21 as six commits, all switched off: derived post keys, a private server-side link from post to account, a key counter in the browser, earnings added up across post addresses, and a Collect step to move them into the balance. **The contributor then dropped it: it complicates the app.** Collecting linked the posts publicly anyway, earnings fragmented into amounts too small to spend, and price, limits and the wallet all needed parallel code paths.
