@@ -543,6 +543,18 @@ Step 5 (fork half) of the Cooks master plan, at the contributor's direction: "we
 - **OPEN — the fee amount (deploy blocker).** The master plan sets a fork at 1 BSV. What is built charges the CURRENT BOOST PRICE, because `/api/boot-shares` only prices a normal boost and `activateCook` does not check an amount. Reaching 1 BSV needs `/api/boot-shares` to build shares for a stated fork amount and `activateCook` to require the payment's total to be at least the fee. Both touch the money path and want the owner's yes and an audit. Until then a fork is nearly free.
 - **Other limits:** a forker who is already a contributor gets part of their own fee back through the pool; nobody can rename or remove a cook; a fork's name is first come, first served, including while pending. Starting a brand-new cook from nothing stays closed (paid spawn, plan step 4, is not built).
 
+## A cook pays its builder, not the idea's poster (2026-11-22) — CONTRIBUTOR DIRECTION, OWNER SIGN-OFF PENDING, NOT BUILT
+
+Direction from the contributor, for the owner to accept or change. No code implements it yet.
+
+- **The rule:** inside a cook, the creator share of a boost (15% today) goes to the **builder** — the account that paid to spawn the cook and linked the work — not to whoever posted the idea. The idea's poster gets **no share for the idea alone**.
+- **Why, in the contributor's words:** "there is no way for us to validate it was [their] original" idea; "maybe they took the idea [from] someone else that said it earlier". A timestamp proves who posted first on OpenCook, not who thought of it first. Paying for spawning plus a linked build pays for something that can be checked and that costs something to fake.
+- **What this replaces:** the 2026-11-17 brainstorm line "the original author always gets paid", and the origin share for the original idea on a fork. Neither was built or owner-approved.
+- **What it does not change:** "Attribution is timestamp-arbitrated" still decides *credit* — the record of who posted what first stays on-chain and visible. This rule is about *payment* inside a cook only. Boosts of ordinary posts outside a cook pay the post's author as they do today. An idea's poster can still earn by spawning it themselves, or through the contributor pool like anyone else.
+- **What it breaks in what is built:** a fork's fee is an ordinary boost of the parent's founding post, so its creator share goes to that post's author — the idea's poster. Under this rule it must go to the parent cook's builder instead. That is a change to who is paid by `/api/boot-shares`, so it needs the owner's yes and an audit (CONTRIBUTING: ask first for anything that handles money).
+- **Proving the build (proposed, not decided):** the spawn post names a repo; the GitHub account that owns it carries `OpenCook: <address>` in its profile (the pattern already in CONTRIBUTING.md); the two must match the spawner's address. The BSV docs offer no wallet-free standard for linking a GitHub account to a key (checked 2026-11-22), so this is OpenCook's own convention.
+- **OPEN:** what counts as having done the work on day one (fee plus a linked repo, or something running); whether a cook has one builder or several; what happens to boosts of an idea post before anyone spawns it.
+
 ## Sessions end with a push to the contributor's fork, conversations included (2026-11-21)
 
 The contributor asked for a standing rule: updates and every conversation go to their GitHub fork without being asked each time. This replaces the old Hard Rule 8 ("always ask before pushing"), which was written when a push could surprise someone reviewing on another device.
